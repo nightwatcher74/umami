@@ -7,6 +7,10 @@ import { UAParser } from 'ua-parser-js';
 import { getIpAddress, stripPort } from '@/lib/ip';
 import { safeDecodeURIComponent } from '@/lib/url';
 
+// Debug flag: enable verbose MMDB/IP logs when GEO_DEBUG=1
+const GEO_DEBUG = process.env.GEO_DEBUG === '1' || process.env.GEO_DEBUG === 'true';
+const GEO_USE_LOCAL_IP = process.env.GEO_USE_LOCAL_IP === '1' || process.env.GEO_USE_LOCAL_IP === 'true';
+
 const MAXMIND = 'maxmind';
 
 const PROVIDER_HEADERS = [
@@ -78,8 +82,12 @@ function decodeHeader(s: string | undefined | null): string | undefined | null {
 
 export async function getLocation(ip: string = '', headers: Headers, skipHeaders: boolean) {
   // Ignore local ips
-  if (!ip || (await isLocalhost(ip))) {
-    return null;
+  if (GEO_DEBUG) console.log(`[geo-debug] getLocation(ip=${ip}`);
+  if (!ip && !GEO_USE_LOCAL_IP) {
+    // Ignore local ips
+    if (!ip || (await isLocalhost(ip))) {
+      return null;
+    }
   }
 
   if (!skipHeaders && !process.env.SKIP_LOCATION_HEADERS) {
@@ -103,9 +111,10 @@ export async function getLocation(ip: string = '', headers: Headers, skipHeaders
   if (!globalThis[MAXMIND]) {
     const dir = path.join(process.cwd(), 'geo');
 
-    globalThis[MAXMIND] = await maxmind.open(
-      process.env.GEOLITE_DB_PATH || path.resolve(dir, 'GeoLite2-City.mmdb'),
-    );
+    const dbPath = process.env.GEOLITE_DB_PATH || path.resolve(dir, 'GeoLite2-City.mmdb');
+    if (GEO_DEBUG) console.log(`[geo-debug] Opening MMDB at: ${dbPath}`);
+    globalThis[MAXMIND] = await maxmind.open(dbPath);
+    if (GEO_DEBUG) console.log('[geo-debug] MMDB opened OK');
   }
 
   const result = globalThis[MAXMIND]?.get(stripPort(ip));
