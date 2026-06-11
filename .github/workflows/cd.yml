@@ -112,5 +112,6 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ${{ steps.compute.outputs.ghcr_tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          #cache-from: type=gha
+          #cache-to: type=gha,mode=max
+          no-cache: true
