@@ -50,6 +50,9 @@ RUN pnpm --allow-build='@prisma/engines' --allow-build='prisma' add npm-run-all 
     @prisma/client@${PRISMA_VERSION} \
     @prisma/adapter-pg@${PRISMA_VERSION}
 
+RUN mkdir -p /runtime-deps \
+    && cp -a "$(readlink -f /app/node_modules/semver)" /runtime-deps/semver
+
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
@@ -60,6 +63,10 @@ COPY --from=builder /app/generated ./generated
 # https://nextjs.org/docs/advanced-features/output-file-tracing
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+RUN mkdir -p /app/scripts/node_modules \
+    && cp -a /runtime-deps/semver /app/scripts/node_modules/semver \
+    && chown -R nextjs:nodejs /app/scripts/node_modules
 
 USER nextjs
 
