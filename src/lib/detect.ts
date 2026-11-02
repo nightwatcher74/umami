@@ -7,6 +7,10 @@ import { UAParser } from 'ua-parser-js';
 import { getIpAddress, stripPort } from '@/lib/ip';
 import { safeDecodeURIComponent } from '@/lib/url';
 
+// Debug flag: enable verbose MMDB/IP logs when GEO_DEBUG=1
+const GEO_DEBUG = process.env.GEO_DEBUG === '1' || process.env.GEO_DEBUG === 'true';
+const GEO_USE_LOCAL_IP = process.env.GEO_USE_LOCAL_IP === '1' || process.env.GEO_USE_LOCAL_IP === 'true';
+
 const MAXMIND = 'maxmind';
 
 const PROVIDER_HEADERS = [
@@ -76,20 +80,14 @@ function decodeHeader(s: string | undefined | null): string | undefined | null {
   return Buffer.from(s, 'latin1').toString('utf-8');
 }
 
-async function isLocalIp(ip: string) {
-  try {
-    return await isLocalhost(ip);
-  } catch {
-    return false;
-  }
-}
-
 export async function getLocation(ip: string = '', headers: Headers, skipHeaders: boolean) {
-  const cleanIp = stripPort(ip);
-
-  // Ignore local or invalid ips
-  if (!cleanIp || !ipaddr.isValid(cleanIp) || (await isLocalIp(cleanIp))) {
-    return null;
+  // Ignore local ips
+  if (GEO_DEBUG) console.log(`[geo-debug] getLocation(ip=${ip}`);
+  if (!ip && !GEO_USE_LOCAL_IP) {
+    // Ignore local ips
+    if (!ip || (await isLocalhost(ip))) {
+      return null;
+    }
   }
 
   if (!skipHeaders && !process.env.SKIP_LOCATION_HEADERS) {
@@ -113,12 +111,13 @@ export async function getLocation(ip: string = '', headers: Headers, skipHeaders
   if (!globalThis[MAXMIND]) {
     const dir = path.join(process.cwd(), 'geo');
 
-    globalThis[MAXMIND] = await maxmind.open(
-      process.env.GEOLITE_DB_PATH || path.resolve(dir, 'GeoLite2-City.mmdb'),
-    );
+    const dbPath = process.env.GEOLITE_DB_PATH || path.resolve(dir, 'GeoLite2-City.mmdb');
+    if (GEO_DEBUG) console.log(`[geo-debug] Opening MMDB at: ${dbPath}`);
+    globalThis[MAXMIND] = await maxmind.open(dbPath);
+    if (GEO_DEBUG) console.log('[geo-debug] MMDB opened OK');
   }
 
-  const result = globalThis[MAXMIND]?.get(cleanIp);
+  const result = globalThis[MAXMIND]?.get(stripPort(ip));
 
   if (result) {
     const country = result.country?.iso_code ?? result?.registered_country?.iso_code;
@@ -150,31 +149,31 @@ export async function getClientInfo(request: Request, payload: Record<string, an
 export function hasBlockedIp(clientIp: string) {
   const ignoreIps = process.env.IGNORE_IP;
 
-  if (!clientIp || !ignoreIps) {
-    return false;
-  }
+  if (ignoreIps) {
+    const ips = [];
 
-  const ips = ignoreIps.split(',').map(n => n.trim());
-
-  return ips.some(ip => {
-    if (ip === clientIp) {
-      return true;
+    if (ignoreIps) {
+      ips.push(...ignoreIps.split(',').map(n => n.trim()));
     }
 
-    // CIDR notation
-    if (ip.indexOf('/') > 0) {
-      try {
+    return ips.find(ip => {
+      if (ip === clientIp) {
+        return true;
+      }
+
+      // CIDR notation
+      if (ip.indexOf('/') > 0) {
         const addr = ipaddr.parse(clientIp);
         const range = ipaddr.parseCIDR(ip);
 
         if (addr.kind() === range[0].kind() && addr.match(range)) {
           return true;
         }
-      } catch {
-        // Ignore parsing errors
       }
-    }
 
-    return false;
-  });
+      return false;
+    });
+  }
+
+  return false;
 }

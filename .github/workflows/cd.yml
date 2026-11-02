@@ -19,7 +19,7 @@ on:
 jobs:
   build:
     name: Build, push, and deploy
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -109,19 +109,9 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.compute.outputs.ghcr_tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max,ignore-error=true
-
-      - name: Build and push to Docker Hub
-        if: github.repository == 'umami-software/umami'
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.compute.outputs.docker_tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max,ignore-error=true
+          #cache-from: type=gha
+          #cache-to: type=gha,mode=max
+          no-cache: true
